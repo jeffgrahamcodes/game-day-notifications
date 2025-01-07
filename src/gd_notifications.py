@@ -4,6 +4,7 @@ import urllib.request
 import boto3
 from datetime import datetime, timedelta, timezone
 
+
 def format_game_data(game):
     status = game.get("Status", "Unknown")
     away_team = game.get("AwayTeam", "Unknown")
@@ -11,11 +12,12 @@ def format_game_data(game):
     final_score = f"{game.get('AwayTeamScore', 'N/A')}-{game.get('HomeTeamScore', 'N/A')}"
     start_time = game.get("DateTime", "Unknown")
     channel = game.get("Channel", "Unknown")
-    
+
     # Format quarters
     quarters = game.get("Quarters", [])
-    quarter_scores = ', '.join([f"Q{q['Number']}: {q.get('AwayScore', 'N/A')}-{q.get('HomeScore', 'N/A')}" for q in quarters])
-    
+    quarter_scores = ', '.join(
+        [f"Q{q['Number']}: {q.get('AwayScore', 'N/A')}-{q.get('HomeScore', 'N/A')}" for q in quarters])
+
     if status == "Final":
         return (
             f"Game Status: {status}\n"
@@ -48,23 +50,24 @@ def format_game_data(game):
             f"Details are unavailable at the moment.\n"
         )
 
+
 def lambda_handler(event, context):
     # Get environment variables
     api_key = os.getenv("NBA_API_KEY")
     sns_topic_arn = os.getenv("SNS_TOPIC_ARN")
     sns_client = boto3.client("sns")
-    
-    # Adjust for Central Time (UTC-6)
+
+    # Adjust for Eastern Time (UTC-5)
     utc_now = datetime.now(timezone.utc)
-    central_time = utc_now - timedelta(hours=6)  # Central Time is UTC-6
-    today_date = central_time.strftime("%Y-%m-%d")
-    
+    eastern_time = utc_now - timedelta(hours=5)  # Eastern Time is UTC-5
+    today_date = eastern_time.strftime("%Y-%m-%d")
+
     print(f"Fetching games for date: {today_date}")
-    
+
     # Fetch data from the API
     api_url = f"https://api.sportsdata.io/v3/nba/scores/json/GamesByDate/{today_date}?key={api_key}"
     print(today_date)
-     
+
     try:
         with urllib.request.urlopen(api_url) as response:
             data = json.loads(response.read().decode())
@@ -72,11 +75,12 @@ def lambda_handler(event, context):
     except Exception as e:
         print(f"Error fetching data from API: {e}")
         return {"statusCode": 500, "body": "Error fetching data"}
-    
+
     # Include all games (final, in-progress, and scheduled)
     messages = [format_game_data(game) for game in data]
-    final_message = "\n---\n".join(messages) if messages else "No games available for today."
-    
+    final_message = "\n---\n".join(
+        messages) if messages else "No games available for today."
+
     # Publish to SNS
     try:
         sns_client.publish(
@@ -88,5 +92,5 @@ def lambda_handler(event, context):
     except Exception as e:
         print(f"Error publishing to SNS: {e}")
         return {"statusCode": 500, "body": "Error publishing to SNS"}
-    
+
     return {"statusCode": 200, "body": "Data processed and sent to SNS"}
